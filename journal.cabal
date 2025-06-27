@@ -1,0 +1,32 @@
+cabal-version:      3.0
+name:               journal
+version:            0.1.0.0
+synopsis:           Grade management program
+-- description:
+license:            MIT
+license-file:       LICENSE
+author:             Roman Maksimovich
+maintainer:         r.a.maksimovich@gmail.com
+-- copyright:
+category:           Education
+build-type:         Simple
+extra-doc-files:    CHANGELOG.md
+-- extra-source-files:
+
+common warnings
+    ghc-options: -Wall
+
+executable journal
+    import:           warnings
+    main-is:          Main.hs
+    other-modules:    AcademicData, AI
+    build-depends:
+        base,
+        containers,
+        directory,
+        haskeline,
+        time,
+        command,
+        strict,
+    hs-source-dirs:   app
+    default-language: Haskell2010
