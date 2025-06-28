@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module Main where
 
 import System.Console.Haskeline
@@ -63,7 +64,7 @@ printStudentProfile (stds, prbs, sols, ex) n = do
 printSolvedProblems :: Data -> Int -> Action ()
 printSolvedProblems (_, prbs, sols, _) n = do
   let solved = fromMaybe empty (M.lookup n sols)
-  foldrWithKey (\k (gr, time) action ->
+  foldrWithKey (\k (gr, time) !action ->
       case M.lookup k prbs of
         Nothing -> action
         Just (cost, ddl) -> do
@@ -97,7 +98,7 @@ listRanking d@(stds, prbs, sols, ex) = do
             in res
       (i1,i2,i3,i4) = group $ sortBy
         (\j1 j2 -> compare (M.lookup j2 grades) (M.lookup j1 grades))
-        $ foldrWithKey (\k _ acc -> k : acc) [] stds
+        $ foldrWithKey (\k _ !acc -> k : acc) [] stds
   unless (null i1) $ do
     outputStrLn $ "| || " ++ color "32" "Grade > 4.0"
     forM_ i1 $ \i ->
@@ -120,13 +121,13 @@ listRanking d@(stds, prbs, sols, ex) = do
 
 listAll :: Data -> Action ()
 listAll d@(stds, _, _, _) = foldrWithKey (
-    \n _ action ->
+    \n _ !action ->
       printStudentProfile d n >> printSolvedProblems d n >> action
   ) (pure ()) stds
 
 listProblems :: Problems -> Action ()
 listProblems = liftIO . foldrWithKey (
-    \n (cost, ddl) action -> do
+    \n (cost, ddl) !action -> do
       let expday = addDays (toInteger ddl) startDate
       curday <- fmap utctDay getCurrentTime
       putStrLn $
@@ -139,7 +140,7 @@ listProblems = liftIO . foldrWithKey (
 
 listStudents :: Students -> Action ()
 listStudents = foldrWithKey (
-    \n name action -> outputStrLn ("| " ++ color "33" (pad '0' 2 $ show n) ++ ". " ++ color "35" name) >> action
+    \n name !action -> outputStrLn ("| " ++ color "33" (pad '0' 2 $ show n) ++ ". " ++ color "35" name) >> action
   ) (pure ())
 
 handleCommand :: Data -> String -> Action ()
@@ -152,7 +153,7 @@ handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
   ["l", "r"] -> listRanking d >> prompt d
   ["l", "p"] -> listProblems prbs >> prompt d
   ["l", "s"] -> listStudents stds >> prompt d
-  ["l", "p", "s"] -> do
+  ["l", "ps"] -> do
     listProblems prbs
     outputStrLn "|"
     listStudents stds

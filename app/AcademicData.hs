@@ -1,3 +1,4 @@
+{-# LANGUAGE BangPatterns #-}
 module AcademicData where
 
 import Data.Map (Map, empty, insertWith, foldrWithKey, (!))
@@ -46,7 +47,7 @@ readProblems (_:rest) = readProblems rest
 
 writeProblems :: Problems -> [String]
 writeProblems = foldrWithKey (
-    \n (cost, ddl) lst -> ("p:" ++ show n ++ "," ++ show cost ++ "," ++ show ddl) : lst
+    \n (cost, ddl) !lst -> ("p:" ++ show n ++ "," ++ show cost ++ "," ++ show ddl) : lst
   ) []
 
 readSolutions :: [String] -> Solutions
@@ -60,7 +61,7 @@ readSolutions (_:rest) = readSolutions rest
 
 writeSolutions :: Solutions -> [String]
 writeSolutions = foldrWithKey (
-    \n prbs lst -> ("s:" ++ show n ++ ";" ++ intercalate ";" (writeProblems prbs)) : lst
+    \n prbs !lst -> ("s:" ++ show n ++ ";" ++ intercalate ";" (writeProblems prbs)) : lst
   ) []
 
 readExam :: [String] -> Exam
@@ -74,7 +75,7 @@ readExam (_:rest) = readExam rest
 
 writeExam :: Exam -> [String]
 writeExam = foldrWithKey (
-    \n g lst -> ("e:" ++ show n ++ "," ++ show g) : lst
+    \n g !lst -> ("e:" ++ show n ++ "," ++ show g) : lst
   ) []
 
 readData :: IO Data
@@ -131,10 +132,10 @@ getCumulativeProblemGrade :: Problems -> Problems -> Float
 getCumulativeProblemGrade probs solved = 5.0 * val / total
   where
     val = foldrWithKey (
-        \n p acc -> acc + getProblemValue (snd (probs ! n)) p
+        \n p !acc -> acc + getProblemValue (snd (probs ! n)) p
       ) 0 solved
     total = foldr (
-        \ (cost, _) acc -> acc + cost
+        \ (cost, _) !acc -> acc + cost
       ) 0 probs
 
 getTotalGrade :: Float -> Float -> Float
