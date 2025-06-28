@@ -2,7 +2,7 @@ module Main where
 
 import System.Console.Haskeline
 import System.Directory
-import Data.Map (empty, insertWith, foldrWithKey, (!), notMember)
+import Data.Map (empty, insertWith, foldrWithKey, (!), notMember, mapWithKey, Map)
 import qualified Data.Map as M (lookup)
 import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
@@ -11,6 +11,9 @@ import Data.Time
 
 import AcademicData
 import AI
+import System.Environment (lookupEnv)
+import Control.Monad (forM_, unless)
+import Data.List (sortBy)
 
 type Action a = InputT IO a
 
@@ -27,10 +30,12 @@ settings = Settings {
 
 putError :: String -> IO ()
 putError msg = do
-  -- putStrLn $ "| " ++ color "1;31" "Error: "
   putStrLn ""
   putStrLn $ color "1;31" "Error: " ++ msg
-  createError msg
+  spec <- lookupEnv "SPECIALISATION"
+  if spec /= Just "hyprland-powersave"
+  then createError msg
+  else putStrLn ""
 
 outputError :: String -> Action ()
 outputError = liftIO . putError
@@ -40,13 +45,13 @@ exit d = do
   liftIO $ writeData False d
   outputStrLn $ "| " ++ color "32" "Quitting..."
   outputStrLn "| "
-  return ()
+  pure ()
 
-printFullStudentInfo :: Data -> Int -> Action ()
-printFullStudentInfo (stds, prbs, sols, ex) n = do
+printStudentProfile :: Data -> Int -> Action ()
+printStudentProfile (stds, prbs, sols, ex) n = do
   let name = stds ! n
-  outputStrLn $ "| " ++ color "33" (show n) ++ " --- " ++ color "35" name
-  outputStr "| | "
+  outputStrLn $ "| " ++ color "33" (pad '0' 2 $ show n) ++ " --- " ++ color "35" name
+  outputStr "| || "
   let egrade = fromMaybe 0 (M.lookup n ex)
   outputStr (printGrade 5.0 egrade)
   outputStr " | "
@@ -54,22 +59,70 @@ printFullStudentInfo (stds, prbs, sols, ex) n = do
       pgrade = getCumulativeProblemGrade prbs solved
   outputStr (printGrade 5.0 pgrade)
   outputStrLn $ " | -> " ++ printGrade 5.0 (getTotalGrade egrade pgrade)
+
+printSolvedProblems :: Data -> Int -> Action ()
+printSolvedProblems (_, prbs, sols, _) n = do
+  let solved = fromMaybe empty (M.lookup n sols)
   foldrWithKey (\k (gr, time) action ->
       case M.lookup k prbs of
         Nothing -> action
         Just (cost, ddl) -> do
-          outputStr "| |     | "
+          outputStr "| ||     | "
           outputStrLn $
             color "33" (show k) ++ " (grade " ++
             printGrade cost gr ++ "/" ++ color "32" (show cost) ++
             " at day " ++ color "33" (show time) ++ "/" ++ color "32" (show ddl) ++ ") "
           action
-    ) (return ()) solved
+    ) (pure ()) solved
+
+listRanking :: Data -> Action ()
+listRanking d@(stds, prbs, sols, ex) = do
+  let getGrade :: Int -> Float
+      getGrade k = getTotalGrade egrade pgrade
+        where
+          egrade = fromMaybe 0 (M.lookup k ex)
+          pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols)
+      grades :: Map Int Float
+      grades = mapWithKey (\k _ -> getGrade k) stds
+      group :: [Int] -> ([Int], [Int], [Int], [Int])
+      group [] = ([],[],[],[])
+      group (x:xs) =
+        let (g1,g2,g3,g4) = group xs
+            f = fromMaybe 0.0 $ M.lookup x grades
+            res
+              | f > 4.0 = (x:g1,g2,g3,g4)
+              | f > 3.0 = (g1,x:g2,g3,g4)
+              | f > 2.0 = (g1,g2,x:g3,g4)
+              | otherwise = (g1,g2,g3,x:g4)
+            in res
+      (i1,i2,i3,i4) = group $ sortBy
+        (\j1 j2 -> compare (M.lookup j2 grades) (M.lookup j1 grades))
+        $ foldrWithKey (\k _ acc -> k : acc) [] stds
+  unless (null i1) $ do
+    outputStrLn $ "| || " ++ color "32" "Grade > 4.0"
+    forM_ i1 $ \i ->
+      printStudentProfile d i
+    outputStrLn "|"
+  unless (null i2) $ do
+    outputStrLn $ "| || " ++ color "33" "Grade > 3.0"
+    forM_ i2 $ \i ->
+      printStudentProfile d i
+    outputStrLn "|"
+  unless (null i3) $ do
+    outputStrLn $ "| || " ++ color "31" "Grade > 2.0"
+    forM_ i3 $ \i ->
+      printStudentProfile d i
+    outputStrLn "|"
+  unless (null i4) $ do
+    outputStrLn $ "| || " ++ color "31" "The worthless scum"
+    forM_ i4 $ \i ->
+      printStudentProfile d i
 
 listAll :: Data -> Action ()
-listAll d = foldrWithKey (
-    \n _ action -> printFullStudentInfo d n >> action
-  ) (return ()) (qfst d)
+listAll d@(stds, _, _, _) = foldrWithKey (
+    \n _ action ->
+      printStudentProfile d n >> printSolvedProblems d n >> action
+  ) (pure ()) stds
 
 listProblems :: Problems -> Action ()
 listProblems = liftIO . foldrWithKey (
@@ -77,45 +130,41 @@ listProblems = liftIO . foldrWithKey (
       let expday = addDays (toInteger ddl) startDate
       curday <- fmap utctDay getCurrentTime
       putStrLn $
-        "| " ++ color "33" (show n) ++
+        "| " ++ color "33" (pad '0' 2 $ show n) ++
         ". Cost: " ++ color "35" (show cost) ++
         ", Expires on " ++ color "35" (printDate expday) ++
         ", in " ++ color "35" (show (diffDays expday curday)) ++ " days."
       action
-  ) (return ())
+  ) (pure ())
 
 listStudents :: Students -> Action ()
 listStudents = foldrWithKey (
-    \n name action -> outputStrLn ("| " ++ color "33" (show n) ++ " --- " ++ color "35" name) >> action
-  ) (return ())
+    \n name action -> outputStrLn ("| " ++ color "33" (pad '0' 2 $ show n) ++ ". " ++ color "35" name) >> action
+  ) (pure ())
 
 handleCommand :: Data -> String -> Action ()
 handleCommand d "" = prompt d
-handleCommand _ "force quit" = return ()
+handleCommand _ "force quit" = pure ()
 handleCommand (_, _, sols, ex) "exit" = exit (sols, ex)
 handleCommand (_, _, sols, ex) "quit" = exit (sols, ex)
-handleCommand (stds, prbs, sols, ex) args = case splitBy ' ' args of
-  ["l", "a"] -> do
-    listAll (stds, prbs, sols, ex)
-    prompt (stds, prbs, sols, ex)
-  ["l", "p"] -> do
-    listProblems prbs
-    prompt (stds, prbs, sols, ex)
-  ["l", "s"] -> do
-    listStudents stds
-    prompt (stds, prbs, sols, ex)
-  ["l", "ps"] -> do
+handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
+  ["l", "a"] -> listAll d >> prompt d
+  ["l", "r"] -> listRanking d >> prompt d
+  ["l", "p"] -> listProblems prbs >> prompt d
+  ["l", "s"] -> listStudents stds >> prompt d
+  ["l", "p", "s"] -> do
     listProblems prbs
     outputStrLn "|"
     listStudents stds
-    prompt (stds, prbs, sols, ex)
+    prompt d
   ["l", num] -> case (readMaybe num :: Maybe Int) of
     Just n -> do
-      printFullStudentInfo (stds, prbs, sols, ex) n
-      prompt (stds, prbs, sols, ex)
+      printStudentProfile d n
+      printSolvedProblems d n
+      prompt d
     Nothing -> do
       outputError "Invalid argument format for listing."
-      prompt (stds, prbs, sols, ex)
+      prompt d
   ["s", num, prob, grade] -> case (readMaybe num :: Maybe Int, readMaybe prob :: Maybe Int, readMaybe grade :: Maybe Float) of
     (Just n, Just p, Just g) -> do
       if notMember n stds || notMember p prbs || g <= 0 || g > fst (prbs ! p)
@@ -131,11 +180,12 @@ handleCommand (stds, prbs, sols, ex) args = case splitBy ' ' args of
                 ex
               )
         outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        printFullStudentInfo newdata n
+        printStudentProfile newdata n
+        printSolvedProblems newdata n
         prompt newdata
     _ -> do
       outputError "Invalid argument format."
-      prompt (stds, prbs, sols, ex)
+      prompt d
   ["e", num, grade] -> case (readMaybe num :: Maybe Int, readMaybe grade :: Maybe Float) of
     (Just n, Just g) -> do
       if notMember n stds || g <= 1.0 || g > 5.0
@@ -148,15 +198,15 @@ handleCommand (stds, prbs, sols, ex) args = case splitBy ' ' args of
                 insertWith const n g ex
               )
         outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        printFullStudentInfo newdata n
+        printStudentProfile newdata n
         prompt newdata
     _ -> do
       outputError "Invalid argument format for setting exam grades."
-      prompt (stds, prbs, sols, ex)
+      prompt d
   ["w"] -> liftIO (writeData True (sols, ex)) >> prompt (stds, prbs, sols, ex)
   _ -> do
     outputError $ "Unrecognized command: " ++ args ++ "."
-    prompt (stds, prbs, sols, ex)
+    prompt d
 
 prompt :: Data -> Action ()
 prompt d = handleInterrupt (prompt d) $ do

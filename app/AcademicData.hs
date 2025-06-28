@@ -14,12 +14,6 @@ type Solutions = Map Int Problems
 type Exam = Map Int Float
 type Data = (Students, Problems, Solutions, Exam)
 
-qfst :: (a,b,c,d) -> a
-qfst (a,_,_,_) = a
-
-qsnd :: (a,b,c,d) -> b
-qsnd (_,b,_,_) = b
-
 insert' :: Ord k => k -> a -> Map k a -> Map k a
 insert' = insertWith (\_ b -> b)
 
@@ -89,11 +83,11 @@ readData = do
   problems <- S.readFile "problems.data"
   solutions <- doesFileExist "solutions-latest.data" >>= \b -> if b
                then S.readFile "solutions-latest.data"
-               else return []
+               else pure []
   exam <- doesFileExist "exam-latest.data" >>= \b -> if b
           then S.readFile "exam-latest.data"
-          else return []
-  return (
+          else pure []
+  pure (
       readStudents (lines students),
       readProblems (lines problems),
       readSolutions (lines solutions),
