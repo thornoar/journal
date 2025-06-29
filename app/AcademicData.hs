@@ -2,12 +2,14 @@
 module AcademicData where
 
 import Data.Map (Map, empty, insertWith, foldrWithKey, (!))
+import qualified Data.Map as M (lookup)
 import Text.Read (readMaybe)
 import Data.List (intercalate)
 import System.Directory (doesFileExist)
 import Data.Time
 import Control.Monad (when)
 import qualified System.IO.Strict as S (readFile)
+import Data.Maybe (fromMaybe)
 
 type Students = Map Int String
 type Problems = Map Int (Float, Int)
@@ -102,6 +104,10 @@ printDate :: Day -> String
 printDate day = pad '0' 2 (show d) ++ "." ++ pad '0' 2 (show m) ++ "." ++ show y
   where (y,m,d) = toGregorian day
 
+printDate' :: Day -> String
+printDate' day = show y ++ "-" ++ pad '0' 2 (show m) ++ "-" ++ pad '0' 2 (show d)
+  where (y,m,d) = toGregorian day
+
 printTime :: DiffTime -> String
 printTime = show . diffTimeToPicoseconds
 
@@ -111,7 +117,7 @@ writeData extra (sols, ex) = do
       excontents = unlines $ writeExam ex
   when extra $ do
     curtime <- getCurrentTime
-    let postfix = printDate (utctDay curtime) ++ "-" ++ printTime (utctDayTime curtime) ++ ".data"
+    let postfix = printDate' (utctDay curtime) ++ "-" ++ printTime (utctDayTime curtime) ++ ".data"
         solfname = "solutions-" ++ postfix
         exfname = "exam-" ++ postfix
     writeFile solfname solcontents
@@ -137,6 +143,12 @@ getCumulativeProblemGrade probs solved = 5.0 * val / total
     total = foldr (
         \ (cost, _) !acc -> acc + cost
       ) 0 probs
+
+getGrade :: Data -> Int -> Float
+getGrade (_,prbs,sols,ex) k = getTotalGrade egrade pgrade
+  where
+    egrade = fromMaybe 0 (M.lookup k ex)
+    pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols)
 
 getTotalGrade :: Float -> Float -> Float
 getTotalGrade eg pg = min 5.0 $ 0.5 * eg + 0.6 * pg

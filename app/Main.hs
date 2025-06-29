@@ -48,7 +48,7 @@ exit d = do
   outputStrLn "| "
   pure ()
 
-printStudentProfile :: Data -> Int -> Action ()
+printStudentProfile :: Data -> Int -> Action Float
 printStudentProfile (stds, prbs, sols, ex) n = do
   let name = stds ! n
   outputStrLn $ "| " ++ color "33" (pad '0' 2 $ show n) ++ " --- " ++ color "35" name
@@ -59,7 +59,9 @@ printStudentProfile (stds, prbs, sols, ex) n = do
   let solved = fromMaybe empty (M.lookup n sols)
       pgrade = getCumulativeProblemGrade prbs solved
   outputStr (printGrade 5.0 pgrade)
-  outputStrLn $ " | -> " ++ printGrade 5.0 (getTotalGrade egrade pgrade)
+  let totalGrade = getTotalGrade egrade pgrade
+  outputStrLn $ " | -> " ++ printGrade 5.0 totalGrade
+  return totalGrade
 
 printSolvedProblems :: Data -> Int -> Action ()
 printSolvedProblems (_, prbs, sols, _) n = do
@@ -77,14 +79,10 @@ printSolvedProblems (_, prbs, sols, _) n = do
     ) (pure ()) solved
 
 listRanking :: Data -> Action ()
-listRanking d@(stds, prbs, sols, ex) = do
-  let getGrade :: Int -> Float
-      getGrade k = getTotalGrade egrade pgrade
-        where
-          egrade = fromMaybe 0 (M.lookup k ex)
-          pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols)
+listRanking d@(stds, _, _, _) = do
+  let
       grades :: Map Int Float
-      grades = mapWithKey (\k _ -> getGrade k) stds
+      grades = mapWithKey (\k _ -> getGrade d k) stds
       group :: [Int] -> ([Int], [Int], [Int], [Int])
       group [] = ([],[],[],[])
       group (x:xs) =
@@ -143,6 +141,11 @@ listStudents = foldrWithKey (
     \n name !action -> outputStrLn ("| " ++ color "33" (pad '0' 2 $ show n) ++ ". " ++ color "35" name) >> action
   ) (pure ())
 
+stonks :: Ordering -> String
+stonks LT = color "32" "(stonks)"
+stonks GT = color "31" "(not stonks)"
+stonks EQ = "(no grade change)"
+
 handleCommand :: Data -> String -> Action ()
 handleCommand d "" = prompt d
 handleCommand _ "force quit" = pure ()
@@ -160,7 +163,7 @@ handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
     prompt d
   ["l", num] -> case (readMaybe num :: Maybe Int) of
     Just n -> do
-      printStudentProfile d n
+      _ <- printStudentProfile d n
       printSolvedProblems d n
       prompt d
     Nothing -> do
@@ -181,15 +184,19 @@ handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
                 ex
               )
         outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        printStudentProfile newdata n
+        outputStrLn "|"
+        let oldGrade = getGrade d n
+        newGrade <- printStudentProfile newdata n
         printSolvedProblems newdata n
+        outputStrLn "|"
+        outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
         prompt newdata
     _ -> do
       outputError "Invalid argument format."
       prompt d
   ["e", num, grade] -> case (readMaybe num :: Maybe Int, readMaybe grade :: Maybe Float) of
     (Just n, Just g) -> do
-      if notMember n stds || g <= 1.0 || g > 5.0
+      if notMember n stds || g < 0.0 || g > 5.0
       then do
         outputError "Invalid arguments for setting exam grades."
         prompt (stds, prbs, sols, ex)
@@ -199,7 +206,11 @@ handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
                 insertWith const n g ex
               )
         outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        printStudentProfile newdata n
+        outputStrLn "|"
+        let oldGrade = getGrade d n
+        newGrade <- printStudentProfile newdata n
+        outputStrLn "|"
+        outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
         prompt newdata
     _ -> do
       outputError "Invalid argument format for setting exam grades."
