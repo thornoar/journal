@@ -20,9 +20,6 @@ respond prompt = command_ [] "ollama" ["run", ollamaModel, prompt]
 --     "{ \"model\": " ++ apiModel ++ ", \"messages\": [ { \"role\": \"user\", \"content\": " ++ prompt ++ " } ] }"
 --   ]
 
-apiKey :: String
-apiKey = "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"
-
 createError :: String -> IO ()
 createError msg = respond $
   "I'm writing a book about an experienced Haskell programmer."
