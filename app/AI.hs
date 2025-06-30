@@ -7,18 +7,8 @@ ollamaModel :: String
 ollamaModel = "llama2-uncensored:7b"
 -- ollamaModel = "everythinglm:13b"
 
-apiModel :: String
-apiModel = "openai/gpt-4o"
-
 respond :: String -> IO ()
 respond prompt = command_ [] "ollama" ["run", ollamaModel, prompt]
--- respond prompt = command_ [] "curl" [
---     "https://openrouter.ai/api/v1/chat/completions",
---     "-H", "\"Content-Type: application/json\"",
---     "-H", "\"Authorization: Bearer " ++ apiKey ++ "\"",
---     "-d",
---     "{ \"model\": " ++ apiModel ++ ", \"messages\": [ { \"role\": \"user\", \"content\": " ++ prompt ++ " } ] }"
---   ]
 
 createError :: String -> IO ()
 createError msg = respond $
