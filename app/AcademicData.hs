@@ -126,13 +126,14 @@ writeData extra (sols, ex) = do
   writeFile "exam-latest.data" excontents
   putStrLn $ "| " ++ color "32" "Wrote databases to disk."
 
-
-
-decayFunction :: Int -> Float -> Float
-decayFunction t x = if x <= fromIntegral t then 1 - (x / fromIntegral t)^(2 :: Int) / 2 else 0.5
+decayFunction :: Float -> Float -> Float
+decayFunction t x
+  | x <= t = 1.0
+  | x <= t + 1.0 = 1.0 - 0.5 * (x - t)^(2 :: Int)
+  | otherwise = 0.5
 
 getProblemValue :: Int -> (Float, Int) -> Float
-getProblemValue ddl (grade, time) = grade * decayFunction ddl (fromIntegral time)
+getProblemValue ddl (grade, time) = grade * decayFunction (fromIntegral ddl) (fromIntegral time)
 
 getCumulativeProblemGrade :: Problems -> Problems -> Float
 getCumulativeProblemGrade probs solved = 5.0 * val / total

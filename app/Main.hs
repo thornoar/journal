@@ -14,7 +14,7 @@ import AcademicData
 import AI
 import System.Environment (lookupEnv)
 import Control.Monad (forM_, unless)
-import Data.List (sortBy)
+import Data.List (sortBy, intercalate)
 
 type Action a = InputT IO a
 
@@ -146,6 +146,23 @@ stonks LT = color "32" "(stonks)"
 stonks GT = color "31" "(not stonks)"
 stonks EQ = "(no grade change)"
 
+rainbowColor :: String -> String
+rainbowColor = intercalate "." . zipWith color ["35","34","34","34","34"] . splitBy '.'
+
+printHelp :: Action ()
+printHelp = forM_ (map ("| " ++) [
+    rainbowColor "l.a" ++ "         - list all students and their grades."
+  , rainbowColor "l.r" ++ "         - print the student ranking table."
+  , rainbowColor "l.p" ++ "         - list all problems and their parameters."
+  , rainbowColor "l.s" ++ "         - give a simple list of all students."
+  , rainbowColor "l.ps" ++ "        - list problems and students in sequence."
+  , rainbowColor "l.@n" ++ "        - print info about student by key @n."
+  , rainbowColor "s.@n.@p.@g" ++ "  - add a solution: student @n solved @p with grade @g."
+  , rainbowColor "e.@n.@g" ++ "     - add an exam grade: student @n received exam grade @g."
+  , rainbowColor "w" ++ "           - write solution/exam databases to disk, with a time code."
+  , rainbowColor "?" ++ "           - print this help message."
+  ]) outputStrLn
+
 handleCommand :: Data -> String -> Action ()
 handleCommand d "" = prompt d
 handleCommand _ "force quit" = pure ()
@@ -191,9 +208,7 @@ handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
         outputStrLn "|"
         outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
         prompt newdata
-    _ -> do
-      outputError "Invalid argument format."
-      prompt d
+    _ -> outputError "Invalid argument format." >> prompt d
   ["e", num, grade] -> case (readMaybe num :: Maybe Int, readMaybe grade :: Maybe Float) of
     (Just n, Just g) -> do
       if notMember n stds || g < 0.0 || g > 5.0
@@ -212,13 +227,10 @@ handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
         outputStrLn "|"
         outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
         prompt newdata
-    _ -> do
-      outputError "Invalid argument format for setting exam grades."
-      prompt d
-  ["w"] -> liftIO (writeData True (sols, ex)) >> prompt (stds, prbs, sols, ex)
-  _ -> do
-    outputError $ "Unrecognized command: " ++ args ++ "."
-    prompt d
+    _ -> outputError "Invalid argument format for setting exam grades." >> prompt d
+  ["w"] -> liftIO (writeData True (sols, ex)) >> prompt d
+  ["?"] -> printHelp >> prompt d
+  _ -> outputError ("Unrecognized command: " ++ args ++ ".") >> prompt d
 
 prompt :: Data -> Action ()
 prompt d = handleInterrupt (prompt d) $ do
