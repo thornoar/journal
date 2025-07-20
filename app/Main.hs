@@ -19,8 +19,8 @@ import Data.List (sortBy, intercalate)
 type Action a = InputT IO a
 
 startDate :: Day
--- startDate = fromGregorian 2025 7 19
-startDate = fromGregorian 2025 6 25
+startDate = fromGregorian 2025 7 19
+-- startDate = fromGregorian 2025 6 25
 
 settings :: Settings IO
 settings = Settings {
@@ -74,7 +74,7 @@ printSolvedProblems (_, prbs, sols, _) n = do
           outputStrLn $
             color "33" (show k) ++ " (grade " ++
             printGrade cost gr ++ "/" ++ color "32" (show cost) ++
-            " at day " ++ color "33" (show time) ++ "/" ++ color "32" (show ddl) ++ ") "
+            " at day " ++ color (if time <= ddl then "32" else "31") (show time) ++ "/" ++ color "32" (show ddl) ++ ") "
           action
     ) (pure ()) solved
 
@@ -151,14 +151,14 @@ rainbowColor = intercalate "." . zipWith color ["35","34","34","34","34"] . spli
 
 printHelp :: Action ()
 printHelp = forM_ (map ("| " ++) [
-    rainbowColor "l.a" ++ "         - list all students and their grades."
-  , rainbowColor "l.r" ++ "         - print the student ranking table."
-  , rainbowColor "l.p" ++ "         - list all problems and their parameters."
-  , rainbowColor "l.s" ++ "         - give a simple list of all students."
-  , rainbowColor "l.ps" ++ "        - list problems and students in sequence."
-  , rainbowColor "l.@n" ++ "        - print info about student by key @n."
-  , rainbowColor "s.@n.@p.@g" ++ "  - add a solution: student @n solved @p with grade @g."
-  , rainbowColor "e.@n.@g" ++ "     - add an exam grade: student @n received exam grade @g."
+    rainbowColor "l a" ++ "         - list all students and their grades."
+  , rainbowColor "l r" ++ "         - print the student ranking table."
+  , rainbowColor "l p" ++ "         - list all problems and their parameters."
+  , rainbowColor "l s" ++ "         - give a simple list of all students."
+  , rainbowColor "l ps" ++ "        - list problems and students in sequence."
+  , rainbowColor "l @n" ++ "        - print info about student by key @n."
+  , rainbowColor "s @n @p @g" ++ "  - add a solution: student @n solved @p with grade @g."
+  , rainbowColor "e @n @g" ++ "     - add an exam grade: student @n received exam grade @g."
   , rainbowColor "w" ++ "           - write solution/exam databases to disk, with a time code."
   , rainbowColor "?" ++ "           - print this help message."
   ]) outputStrLn
@@ -168,7 +168,7 @@ handleCommand d "" = prompt d
 handleCommand _ "force quit" = pure ()
 handleCommand (_, _, sols, ex) "exit" = exit (sols, ex)
 handleCommand (_, _, sols, ex) "quit" = exit (sols, ex)
-handleCommand d@(stds, prbs, sols, ex) args = case splitBy '.' args of
+handleCommand d@(stds, prbs, sols, ex) args = case splitBy ' ' args of
   ["l", "a"] -> listAll d >> prompt d
   ["l", "r"] -> listRanking d >> prompt d
   ["l", "p"] -> listProblems prbs >> prompt d
