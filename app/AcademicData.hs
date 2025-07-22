@@ -14,8 +14,9 @@ import Data.Maybe (fromMaybe)
 type Students = Map Int String
 type Problems = Map Int (Float, Int)
 type Solutions = Map Int Problems
+type Bonus = Map Int Float
 type Exam = Map Int Float
-type Data = (Students, Problems, Solutions, Exam)
+type Data = (Students, Problems, Solutions, Bonus, Exam)
 
 insert' :: Ord k => k -> a -> Map k a -> Map k a
 insert' = insertWith (\_ b -> b)
@@ -66,6 +67,20 @@ writeSolutions = foldrWithKey (
     \n prbs !lst -> ("s:" ++ show n ++ ";" ++ intercalate ";" (writeProblems prbs)) : lst
   ) []
 
+readBonus :: [String] -> Bonus
+readBonus [] = empty
+readBonus (('b':':':str):rest) = case splitBy ',' str of
+  [num, val] -> case (readMaybe num :: Maybe Int, readMaybe val :: Maybe Float) of
+    (Just n, Just v) -> insert' n v (readBonus rest)
+    _ -> readBonus rest
+  _ -> readBonus rest
+readBonus (_:rest) = readBonus rest
+
+writeBonus :: Bonus -> [String]
+writeBonus = foldrWithKey (
+    \n v !lst -> ("b:" ++ show n ++ "," ++ show v) : lst
+  ) []
+
 readExam :: [String] -> Exam
 readExam [] = empty
 readExam (('e':':':str):rest) = case splitBy ',' str of
@@ -87,6 +102,9 @@ readData = do
   solutions <- doesFileExist "solutions-latest.data" >>= \b -> if b
                then S.readFile "solutions-latest.data"
                else pure []
+  bonus <- doesFileExist "bonus-latest.data" >>= \b -> if b
+               then S.readFile "bonus-latest.data"
+               else pure []
   exam <- doesFileExist "exam-latest.data" >>= \b -> if b
           then S.readFile "exam-latest.data"
           else pure []
@@ -94,6 +112,7 @@ readData = do
       readStudents (lines students),
       readProblems (lines problems),
       readSolutions (lines solutions),
+      readBonus (lines bonus),
       readExam (lines exam)
     )
 
@@ -111,18 +130,22 @@ printDate' day = show y ++ "-" ++ pad '0' 2 (show m) ++ "-" ++ pad '0' 2 (show d
 printTime :: DiffTime -> String
 printTime = show . diffTimeToPicoseconds
 
-writeData :: Bool -> (Solutions, Exam) -> IO ()
-writeData extra (sols, ex) = do
+writeData :: Bool -> (Solutions, Bonus, Exam) -> IO ()
+writeData extra (sols, bon, ex) = do
   let solcontents = unlines $ writeSolutions sols
+      bonuscontents = unlines $ writeBonus bon
       excontents = unlines $ writeExam ex
   when extra $ do
     curtime <- getCurrentTime
     let postfix = printDate' (utctDay curtime) ++ "-" ++ printTime (utctDayTime curtime) ++ ".data"
         solfname = "solutions-" ++ postfix
+        bonfname = "bonus-" ++ postfix
         exfname = "exam-" ++ postfix
     writeFile solfname solcontents
+    writeFile bonfname bonuscontents
     writeFile exfname excontents
   writeFile "solutions-latest.data" solcontents
+  writeFile "bonus-latest.data" bonuscontents
   writeFile "exam-latest.data" excontents
   putStrLn $ "| " ++ color "32" "Wrote databases to disk."
 
@@ -134,21 +157,24 @@ decayFunction t x
 getProblemValue :: Int -> (Float, Int) -> Float
 getProblemValue ddl (grade, time) = grade * decayFunction ddl time
 
-getCumulativeProblemGrade :: Problems -> Problems -> Float
-getCumulativeProblemGrade probs solved = 5.0 * val / total
+getCumulativeProblemGrade :: Problems -> Problems -> Bonus -> Float
+getCumulativeProblemGrade probs solved bonus = 5.0 * (val + b) / total
   where
     val = foldrWithKey (
         \n p !acc -> acc + getProblemValue (snd (probs ! n)) p
       ) 0 solved
+    b = foldr (
+        \v !acc -> acc + v
+     ) 0 bonus
     total = foldr (
         \ (cost, _) !acc -> acc + cost
       ) 0 probs
 
 getGrade :: Data -> Int -> Float
-getGrade (_,prbs,sols,ex) k = getTotalGrade egrade pgrade
+getGrade (_,prbs,sols,bon,ex) k = getTotalGrade egrade pgrade
   where
     egrade = fromMaybe 0 (M.lookup k ex)
-    pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols)
+    pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols) bon
 
 getTotalGrade :: Float -> Float -> Float
 getTotalGrade eg pg = min 5.0 $ 0.5 * eg + 0.6 * pg
@@ -163,5 +189,12 @@ gradeColor lim f
   | f/lim < 0.85 = "33"
   | otherwise = "32"
 
+printFloat :: Float -> String
+printFloat = select . show
+  where select :: String -> String
+        select ('.':rest) = '.' : take 1 rest
+        select (c:rest) = c : select rest
+        select [] = []
+
 printGrade :: Float -> Float -> String
-printGrade lim f = color (gradeColor lim f) $ if f < 0.1 then "~ 0" else take 3 (show f)
+printGrade lim f = color (gradeColor lim f) $ if f < 0.1 then "~ 0" else printFloat f
