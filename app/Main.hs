@@ -57,10 +57,10 @@ printStudentProfile (stds, prbs, sols, bon, ex) n = do
   outputStr (printGrade 5.0 egrade)
   outputStr " | "
   let solved = fromMaybe empty (M.lookup n sols)
-      pgrade = getCumulativeProblemGrade prbs solved bon
+      pgrade = getCumulativeProblemGrade prbs solved (fromMaybe 0 $ M.lookup n bon)
   outputStr (printGrade 5.0 pgrade)
   let bonusgrade = fromMaybe 0 (M.lookup n bon)
-  outputStr $ " <- " ++ color "32" ('+' : if bonusgrade < 0.1 then "0" else printFloat bonusgrade)
+  outputStr $ " <- " ++ color "32" ('+' : if bonusgrade < 0.1 then "0.0" else printFloat bonusgrade)
   let totalGrade = getTotalGrade egrade pgrade
   outputStrLn $ " | -> " ++ printGrade 5.0 totalGrade
   return totalGrade
