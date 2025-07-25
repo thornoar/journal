@@ -41,32 +41,40 @@ putError msg = do
 outputError :: String -> Action ()
 outputError = liftIO . putError
 
-exit :: (Solutions, Bonus, Exam) -> Action ()
+exit :: Data -> Action ()
 exit d = do
   liftIO $ writeData False d
   outputStrLn $ "| " ++ color "32" "Quitting..."
   outputStrLn "| "
   pure ()
 
-printStudentProfile :: Data -> Int -> Action Float
-printStudentProfile (stds, prbs, sols, bon, ex) n = do
-  let name = stds ! n
-  outputStrLn $ "| " ++ color "33" (pad '0' 2 $ show n) ++ " --- " ++ color "35" name
-  outputStr "| || "
-  let egrade = fromMaybe 0 (M.lookup n ex)
-  outputStr (printGrade 5.0 egrade)
-  outputStr " | "
-  let solved = fromMaybe empty (M.lookup n sols)
-      pgrade = getCumulativeProblemGrade prbs solved (fromMaybe 0 $ M.lookup n bon)
-  outputStr (printGrade 5.0 pgrade)
-  let bonusgrade = fromMaybe 0 (M.lookup n bon)
-  outputStr $ " <- " ++ color "32" ('+' : if bonusgrade < 0.1 then "0.0" else printFloat bonusgrade)
-  let totalGrade = getTotalGrade egrade pgrade
-  outputStrLn $ " | -> " ++ printGrade 5.0 totalGrade
-  return totalGrade
+printStudentProfile :: Data -> Int -> Action Int
+printStudentProfile (stds, prbs, sols, bon, ex, fin) n = do
+  if notMember n stds
+  then outputError "No such student." >> return 0
+  else do
+    let name = fromMaybe "no such student" (M.lookup n stds)
+    outputStrLn $ "| " ++ color "33" (pad '0' 2 $ show n) ++ " --- " ++ color "35" name
+    outputStr "| || "
+    let egrade = fromMaybe 0 (M.lookup n ex)
+    outputStr (printGrade 5.0 egrade)
+    outputStr " | "
+    let solved = fromMaybe empty (M.lookup n sols)
+        pgrade = getCumulativeProblemGrade prbs solved (fromMaybe 0 $ M.lookup n bon)
+    outputStr (printGrade 5.0 pgrade)
+    let bonusgrade = fromMaybe 0 (M.lookup n bon)
+    outputStr $ " <- " ++ color "32" ('+' : if bonusgrade < 0.1 then "0.0" else printFloat bonusgrade)
+    outputStr " | "
+    let totalGrade = fromMaybe (getTotalGrade egrade pgrade) (M.lookup n fin)
+    if notMember n fin
+    then do
+      outputStrLn $ "-> " ++ printFinalGrade totalGrade ++ "?"
+    else do
+      outputStrLn $ "Total grade: " ++ printFinalGrade totalGrade
+    return totalGrade
 
 printSolvedProblems :: Data -> Int -> Action ()
-printSolvedProblems (_, prbs, sols, _, _) n = do
+printSolvedProblems (_, prbs, sols, _, _, _) n = do
   let solved = fromMaybe empty (M.lookup n sols)
   foldrWithKey (\k (gr, time) !action ->
       case M.lookup k prbs of
@@ -81,19 +89,19 @@ printSolvedProblems (_, prbs, sols, _, _) n = do
     ) (pure ()) solved
 
 listRanking :: Data -> Action ()
-listRanking d@(stds, _, _, _, _) = do
+listRanking d@(stds, _, _, _, _, _) = do
   let
-      grades :: Map Int Float
+      grades :: Map Int Int
       grades = mapWithKey (\k _ -> getGrade d k) stds
       group :: [Int] -> ([Int], [Int], [Int], [Int])
       group [] = ([],[],[],[])
       group (x:xs) =
         let (g1,g2,g3,g4) = group xs
-            f = fromMaybe 0.0 $ M.lookup x grades
+            f = fromMaybe 0 $ M.lookup x grades
             res
-              | f > 4.0 = (x:g1,g2,g3,g4)
-              | f > 3.0 = (g1,x:g2,g3,g4)
-              | f > 2.0 = (g1,g2,x:g3,g4)
+              | f > 4 = (x:g1,g2,g3,g4)
+              | f > 3 = (g1,x:g2,g3,g4)
+              | f > 2 = (g1,g2,x:g3,g4)
               | otherwise = (g1,g2,g3,x:g4)
             in res
       (i1,i2,i3,i4) = group $ sortBy
@@ -120,21 +128,25 @@ listRanking d@(stds, _, _, _, _) = do
       printStudentProfile d i
 
 listAll :: Data -> Action ()
-listAll d@(stds, _, _, _, _) = foldrWithKey (
+listAll d@(stds, _, _, _, _, _) = foldrWithKey (
     \n _ !action ->
       printStudentProfile d n >> printSolvedProblems d n >> action
   ) (pure ()) stds
 
+listProblem :: Int -> (Float, Int) -> Action ()
+listProblem n (cost, ddl) = do
+  let expday = addDays (toInteger ddl) startDate
+  curday <- liftIO $ fmap utctDay getCurrentTime
+  outputStrLn $
+    "| " ++ color "33" (pad '0' 2 $ show n) ++
+    ". Cost: " ++ color "35" (show cost) ++
+    ", Expires on " ++ color "35" (printDate expday) ++
+    ", in " ++ color "35" (show (diffDays expday curday)) ++ " days."
+
 listProblems :: Problems -> Action ()
-listProblems = liftIO . foldrWithKey (
-    \n (cost, ddl) !action -> do
-      let expday = addDays (toInteger ddl) startDate
-      curday <- fmap utctDay getCurrentTime
-      putStrLn $
-        "| " ++ color "33" (pad '0' 2 $ show n) ++
-        ". Cost: " ++ color "35" (show cost) ++
-        ", Expires on " ++ color "35" (printDate expday) ++
-        ", in " ++ color "35" (show (diffDays expday curday)) ++ " days."
+listProblems = foldrWithKey (
+    \n val !action -> do
+      listProblem n val
       action
   ) (pure ())
 
@@ -165,93 +177,115 @@ printHelp = forM_ (map ("| " ++) [
   , rainbowColor "?" ++ "           - print this help message."
   ]) outputStrLn
 
+printProblemProfile :: Data -> Int -> Action ()
+printProblemProfile d@(stds, prbs, sols, _, _, _) n = do
+  if notMember n prbs
+  then outputError "No such problem."
+  else do
+    listProblem n (prbs ! n)
+    outputStrLn "|"
+    outputStrLn $ "| " ++ color "32" "Submitted:"
+    outputStrLn "|"
+    foldrWithKey (
+        \k _ !action ->
+          if notMember n (fromMaybe empty $ M.lookup k sols)
+          then action
+          else printStudentProfile d k >> action
+      ) (pure ()) stds
+    outputStrLn "|"
+    outputStrLn $ "| " ++ color "31" "Did not submit:"
+    foldrWithKey (
+        \k _ !action ->
+          if notMember n (fromMaybe empty $ M.lookup k sols)
+          then printStudentProfile d k >> action
+          else action
+      ) (pure ()) stds
+
+addSolution :: Data -> Int -> Int -> Float -> Action Data
+addSolution d@(stds, prbs, sols, bon, ex, fin) n p g = do
+  if notMember n stds || notMember p prbs || g <= 0 || g > fst (prbs ! p)
+  then outputError "Invalid argument values for setting a solution." >> return d
+  else do
+    time <- fmap (fromInteger . (`diffDays` startDate) . utctDay) (liftIO getCurrentTime)
+    let newmap = insertWith const p (g, time) $ fromMaybe empty (M.lookup n sols)
+        newdata = (
+            stds, prbs,
+            insertWith const n newmap sols,
+            bon,
+            ex,
+            fin
+          )
+    outputStrLn $ "| " ++ color "32" "Record succesfully updated."
+    outputStrLn "|"
+    let oldGrade = getGrade d n
+    newGrade <- printStudentProfile newdata n
+    printSolvedProblems newdata n
+    outputStrLn "|"
+    outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
+    return newdata
+
+addBonus :: Data -> Int -> Float -> Action Data
+addBonus d@(stds, prbs, sols, bon, ex, fin) n v = do
+  if notMember n stds
+  then outputError "Invalid arguments for setting bonus points." >> return d
+  else do
+    let newdata = (
+            stds, prbs, sols,
+            insertWith const n (v + fromMaybe 0 (M.lookup n bon)) bon,
+            ex, fin
+          )
+    outputStrLn $ "| " ++ color "32" "Record succesfully updated."
+    outputStrLn "|"
+    let oldGrade = getGrade d n
+    newGrade <- printStudentProfile newdata n
+    outputStrLn "|"
+    outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
+    return newdata
+
+addExam :: Data -> Int -> Float -> Action Data
+addExam d@(stds, prbs, sols, bon, ex, fin) n g = do
+  if notMember n stds || g < 0.0 || g > 5.0
+  then outputError "Invalid arguments for setting exam grades." >> return d
+  else do
+    let newdata = (
+            stds, prbs, sols, bon,
+            insertWith const n g ex, fin
+          )
+    outputStrLn $ "| " ++ color "32" "Record succesfully updated."
+    outputStrLn "|"
+    let oldGrade = getGrade d n
+    newGrade <- printStudentProfile newdata n
+    outputStrLn "|"
+    outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
+    return newdata
+
 handleCommand :: Data -> String -> Action ()
 handleCommand d "" = prompt d
 handleCommand _ "force quit" = pure ()
-handleCommand (_, _, sols, bon, ex) "exit" = exit (sols, bon, ex)
-handleCommand (_, _, sols, bon, ex) "quit" = exit (sols, bon, ex)
-handleCommand d@(stds, prbs, sols, bon, ex) args = case splitBy ' ' args of
+handleCommand d "exit" = exit d
+handleCommand d "quit" = exit d
+handleCommand d@(stds, prbs, _, _, _, _) args = case splitBy ' ' args of
   ["l", "a"] -> listAll d >> prompt d
   ["l", "r"] -> listRanking d >> prompt d
   ["l", "p"] -> listProblems prbs >> prompt d
   ["l", "s"] -> listStudents stds >> prompt d
-  ["l", "ps"] -> do
-    listProblems prbs
-    outputStrLn "|"
-    listStudents stds
-    prompt d
+  ["l", "ps"] -> listProblems prbs >> outputStrLn "|" >> listStudents stds >> prompt d
   ["l", num] -> case (readMaybe num :: Maybe Int) of
-    Just n -> do
-      _ <- printStudentProfile d n
-      printSolvedProblems d n
-      prompt d
-    Nothing -> do
-      outputError "Invalid argument format for listing."
-      prompt d
+    Just n -> printStudentProfile d n >> printSolvedProblems d n >> prompt d
+    Nothing -> outputError "Invalid argument format for listing." >> prompt d
+  ["l", "p", num] -> case (readMaybe num :: Maybe Int) of
+    Just n -> printProblemProfile d n >> prompt d
+    Nothing -> outputError "Invalid argument format for listing." >> prompt d
   ["s", num, prob, grade] -> case (readMaybe num :: Maybe Int, readMaybe prob :: Maybe Int, readMaybe grade :: Maybe Float) of
-    (Just n, Just p, Just g) -> do
-      if notMember n stds || notMember p prbs || g <= 0 || g > fst (prbs ! p)
-      then do
-        outputError "Invalid argument values for setting a solution."
-        prompt d
-      else do
-        time <- fmap (fromInteger . (`diffDays` startDate) . utctDay) (liftIO getCurrentTime)
-        let newmap = insertWith const p (g, time) $ fromMaybe empty (M.lookup n sols)
-            newdata = (
-                stds, prbs,
-                insertWith const n newmap sols,
-                bon,
-                ex
-              )
-        outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        outputStrLn "|"
-        let oldGrade = getGrade d n
-        newGrade <- printStudentProfile newdata n
-        printSolvedProblems newdata n
-        outputStrLn "|"
-        outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
-        prompt newdata
+    (Just n, Just p, Just g) -> addSolution d n p g >>= prompt
     _ -> outputError "Invalid argument format." >> prompt d
   ["b", num, val] -> case (readMaybe num :: Maybe Int, readMaybe val :: Maybe Float) of
-    (Just n, Just v) -> do
-      if notMember n stds
-      then do
-        outputError "Invalid arguments for setting bonus points."
-        prompt d
-      else do
-        let newdata = (
-                stds, prbs, sols,
-                insertWith const n (v + fromMaybe 0 (M.lookup n bon)) bon,
-                ex
-              )
-        outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        outputStrLn "|"
-        let oldGrade = getGrade d n
-        newGrade <- printStudentProfile newdata n
-        outputStrLn "|"
-        outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
-        prompt newdata
+    (Just n, Just v) -> addBonus d n v >>= prompt
     _ -> outputError "Invalid argument format for setting exam grades." >> prompt d
   ["e", num, grade] -> case (readMaybe num :: Maybe Int, readMaybe grade :: Maybe Float) of
-    (Just n, Just g) -> do
-      if notMember n stds || g < 0.0 || g > 5.0
-      then do
-        outputError "Invalid arguments for setting exam grades."
-        prompt d
-      else do
-        let newdata = (
-                stds, prbs, sols, bon,
-                insertWith const n g ex
-              )
-        outputStrLn $ "| " ++ color "32" "Record succesfully updated."
-        outputStrLn "|"
-        let oldGrade = getGrade d n
-        newGrade <- printStudentProfile newdata n
-        outputStrLn "|"
-        outputStrLn $ "| " ++ stonks (compare oldGrade newGrade)
-        prompt newdata
+    (Just n, Just g) -> addExam d n g >>= prompt
     _ -> outputError "Invalid argument format for setting exam grades." >> prompt d
-  ["w"] -> liftIO (writeData True (sols, bon, ex)) >> prompt d
+  ["w"] -> liftIO (writeData True d) >> prompt d
   ["?"] -> printHelp >> prompt d
   _ -> outputError ("Unrecognized command: " ++ args ++ ".") >> prompt d
 
@@ -260,8 +294,7 @@ prompt d = handleInterrupt (prompt d) $ do
   outputStrLn "|"
   minput <- getInputLine ("[" ++ color "33" "journal" ++ "] : ")
   case minput of
-    Nothing -> outputStrLn "|" >> case d of
-      (_, _, sols, bon, ex) -> exit (sols, bon, ex)
+    Nothing -> outputStrLn "|" >> exit d
     Just "" -> prompt d
     Just input -> outputStrLn "|" >> handleCommand d input
 

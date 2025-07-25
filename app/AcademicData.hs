@@ -1,7 +1,7 @@
 {-# LANGUAGE BangPatterns #-}
 module AcademicData where
 
-import Data.Map (Map, empty, insertWith, foldrWithKey, (!))
+import Data.Map (Map, empty, insertWith, foldrWithKey, (!), notMember)
 import qualified Data.Map as M (lookup)
 import Text.Read (readMaybe)
 import Data.List (intercalate)
@@ -16,7 +16,8 @@ type Problems = Map Int (Float, Int)
 type Solutions = Map Int Problems
 type Bonus = Map Int Float
 type Exam = Map Int Float
-type Data = (Students, Problems, Solutions, Bonus, Exam)
+type Final = Map Int Int
+type Data = (Students, Problems, Solutions, Bonus, Exam, Final)
 
 insert' :: Ord k => k -> a -> Map k a -> Map k a
 insert' = insertWith (\_ b -> b)
@@ -95,6 +96,20 @@ writeExam = foldrWithKey (
     \n g !lst -> ("e:" ++ show n ++ "," ++ show g) : lst
   ) []
 
+readFinal :: [String] -> Final
+readFinal [] = empty
+readFinal (('f':':':str):rest) = case splitBy ',' str of
+  [num, grade] -> case (readMaybe num :: Maybe Int, readMaybe grade :: Maybe Int) of
+    (Just n, Just g) -> insert' n g (readFinal rest)
+    _ -> readFinal rest
+  _ -> readFinal rest
+readFinal (_:rest) = readFinal rest
+
+writeFinal :: Final -> [String]
+writeFinal = foldrWithKey (
+    \n g !lst -> ("f:" ++ show n ++ "," ++ show g) : lst
+  ) []
+
 readData :: IO Data
 readData = do
   students <- S.readFile "students.data"
@@ -108,12 +123,16 @@ readData = do
   exam <- doesFileExist "exam-latest.data" >>= \b -> if b
           then S.readFile "exam-latest.data"
           else pure []
+  final <- doesFileExist "final-latest.data" >>= \b -> if b
+          then S.readFile "final-latest.data"
+          else pure []
   pure (
       readStudents (lines students),
       readProblems (lines problems),
       readSolutions (lines solutions),
       readBonus (lines bonus),
-      readExam (lines exam)
+      readExam (lines exam),
+      readFinal (lines final)
     )
 
 pad :: Char -> Int -> String -> String
@@ -130,23 +149,27 @@ printDate' day = show y ++ "-" ++ pad '0' 2 (show m) ++ "-" ++ pad '0' 2 (show d
 printTime :: DiffTime -> String
 printTime = show . diffTimeToPicoseconds
 
-writeData :: Bool -> (Solutions, Bonus, Exam) -> IO ()
-writeData extra (sols, bon, ex) = do
+writeData :: Bool -> Data -> IO ()
+writeData extra (_, _, sols, bon, ex, fin) = do
   let solcontents = unlines $ writeSolutions sols
       bonuscontents = unlines $ writeBonus bon
       excontents = unlines $ writeExam ex
+      fincontents = unlines $ writeFinal fin
   when extra $ do
     curtime <- getCurrentTime
     let postfix = printDate' (utctDay curtime) ++ "-" ++ printTime (utctDayTime curtime) ++ ".data"
         solfname = "solutions-" ++ postfix
         bonfname = "bonus-" ++ postfix
         exfname = "exam-" ++ postfix
+        finfname = "final-" ++ postfix
     writeFile solfname solcontents
     writeFile bonfname bonuscontents
     writeFile exfname excontents
+    writeFile finfname fincontents
   writeFile "solutions-latest.data" solcontents
   writeFile "bonus-latest.data" bonuscontents
   writeFile "exam-latest.data" excontents
+  writeFile "final-latest.data" fincontents
   putStrLn $ "| " ++ color "32" "Wrote databases to disk."
 
 decayFunction :: Int -> Int -> Float
@@ -167,14 +190,17 @@ getCumulativeProblemGrade probs solved bonus = 5.0 * (val + bonus) / total
         \ (cost, _) !acc -> acc + cost
       ) 0 probs
 
-getGrade :: Data -> Int -> Float
-getGrade (_,prbs,sols,bon,ex) k = getTotalGrade egrade pgrade
-  where
-    egrade = fromMaybe 0 (M.lookup k ex)
-    pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols) (fromMaybe 0 $ M.lookup k bon)
+getGrade :: Data -> Int -> Int
+getGrade (_,prbs,sols,bon,ex,fin) k =
+  if notMember k fin
+  then getTotalGrade egrade pgrade
+  else fin ! k
+    where
+      egrade = fromMaybe 0 (M.lookup k ex)
+      pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols) (fromMaybe 0 $ M.lookup k bon)
 
-getTotalGrade :: Float -> Float -> Float
-getTotalGrade eg pg = min 5.0 $ 0.5 * eg + 0.6 * pg
+getTotalGrade :: Float -> Float -> Int
+getTotalGrade eg pg = min 5 . max 2 . round $ 0.5 * eg + 0.6 * pg
 
 
 color :: String -> String -> String
@@ -195,3 +221,9 @@ printFloat = select . show
 
 printGrade :: Float -> Float -> String
 printGrade lim f = color (gradeColor lim f) $ if f < 0.1 then "~ 0" else printFloat f
+
+printFinalGrade :: Int -> String
+printFinalGrade g
+  | g == 2 = color "31" (show g)
+  | g == 3 = color "33" (show g)
+  | otherwise = color "32" (show g)
