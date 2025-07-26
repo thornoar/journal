@@ -5,6 +5,7 @@ import System.Console.Haskeline
 import System.Directory
 import Data.Map (empty, insertWith, foldrWithKey, (!), notMember, mapWithKey, Map)
 import qualified Data.Map as M (lookup)
+import qualified System.Random as R
 import Data.Maybe (fromMaybe)
 import Text.Read (readMaybe)
 import Control.Monad.IO.Class (liftIO)
@@ -281,11 +282,14 @@ handleCommand d@(stds, prbs, _, _, _, _) args = case splitBy ' ' args of
     _ -> outputError "Invalid argument format." >> prompt d
   ["b", num, val] -> case (readMaybe num :: Maybe Int, readMaybe val :: Maybe Float) of
     (Just n, Just v) -> addBonus d n v >>= prompt
-    _ -> outputError "Invalid argument format for setting exam grades." >> prompt d
+    _ -> outputError "Invalid argument format for setting bonus points." >> prompt d
   ["e", num, grade] -> case (readMaybe num :: Maybe Int, readMaybe grade :: Maybe Float) of
     (Just n, Just g) -> addExam d n g >>= prompt
     _ -> outputError "Invalid argument format for setting exam grades." >> prompt d
   ["w"] -> liftIO (writeData True d) >> prompt d
+  ["r", low, up] -> case (readMaybe low :: Maybe Int, readMaybe up :: Maybe Int) of
+    (Just l, Just u) -> randomPrompt l u >> prompt d
+    _ -> outputError "Invalid argument format for entering random number generator." >> prompt d
   ["?"] -> printHelp >> prompt d
   _ -> outputError ("Unrecognized command: " ++ args ++ ".") >> prompt d
 
@@ -297,6 +301,16 @@ prompt d = handleInterrupt (prompt d) $ do
     Nothing -> outputStrLn "|" >> exit d
     Just "" -> prompt d
     Just input -> outputStrLn "|" >> handleCommand d input
+
+randomPrompt :: Int -> Int -> Action ()
+randomPrompt low up = do
+  minput <- getInputLine ("[" ++ color "35" "randomizer" ++ "] : ")
+  case minput of
+    Nothing -> pure ()
+    Just _ -> do
+      num <- liftIO (R.randomIO :: IO Int)
+      outputStrLn $ "| Random number is: " ++ color "34" (show $ low + mod num (up - low + 1))
+      randomPrompt low up
 
 main :: IO ()
 main = do

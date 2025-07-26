@@ -28,5 +28,6 @@ executable journal
         time,
         command,
         strict,
+        random
     hs-source-dirs:   app
     default-language: Haskell2010
