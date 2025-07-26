@@ -61,11 +61,11 @@ printStudentProfile (stds, prbs, sols, bon, ex, fin) n = do
     outputStr (printGrade 5.0 egrade)
     outputStr " | "
     let solved = fromMaybe empty (M.lookup n sols)
-        pgrade = getCumulativeProblemGrade prbs solved (fromMaybe 0 $ M.lookup n bon)
-    outputStr (printGrade 5.0 pgrade)
+        (total, val, pgrade) = getCumulativeProblemGrade prbs solved (fromMaybe 0 $ M.lookup n bon)
+    outputStr $ printGrade total val ++ "/" ++ color "32" (show total)
     let bonusgrade = fromMaybe 0 (M.lookup n bon)
-    outputStr $ " <- " ++ color "32" ('+' : if bonusgrade < 0.1 then "0.0" else printFloat bonusgrade)
-    outputStr " | "
+    outputStr $ " + " ++ color "32" (if bonusgrade < 0.1 then "0.0" else printFloat bonusgrade)
+    outputStr $ " -> " ++ printGrade 5.0 pgrade ++ " | "
     let totalGrade = fromMaybe (getTotalGrade egrade pgrade) (M.lookup n fin)
     if notMember n fin
     then do

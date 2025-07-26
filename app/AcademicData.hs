@@ -180,8 +180,8 @@ decayFunction t x
 getProblemValue :: Int -> (Float, Int) -> Float
 getProblemValue ddl (grade, time) = grade * decayFunction ddl time
 
-getCumulativeProblemGrade :: Problems -> Problems -> Float -> Float
-getCumulativeProblemGrade probs solved bonus = 5.0 * (val + bonus) / total
+getCumulativeProblemGrade :: Problems -> Problems -> Float -> (Float, Float, Float)
+getCumulativeProblemGrade probs solved bonus = (total, val, 5.0 * (val + bonus) / total)
   where
     val = foldrWithKey (
         \n p !acc -> acc + getProblemValue (snd (probs ! n)) p
@@ -197,7 +197,7 @@ getGrade (_,prbs,sols,bon,ex,fin) k =
   else fin ! k
     where
       egrade = fromMaybe 0 (M.lookup k ex)
-      pgrade = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols) (fromMaybe 0 $ M.lookup k bon)
+      (_, _, pgrade) = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols) (fromMaybe 0 $ M.lookup k bon)
 
 getTotalGrade :: Float -> Float -> Int
 getTotalGrade eg pg = min 5 . max 2 . round $ 0.5 * eg + 0.6 * pg
