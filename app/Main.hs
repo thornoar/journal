@@ -288,7 +288,7 @@ handleCommand d@(stds, prbs, _, _, _, _) args = case splitBy ' ' args of
     _ -> outputError "Invalid argument format for setting exam grades." >> prompt d
   ["w"] -> liftIO (writeData True d) >> prompt d
   ["r", low, up] -> case (readMaybe low :: Maybe Int, readMaybe up :: Maybe Int) of
-    (Just l, Just u) -> randomPrompt l u >> prompt d
+    (Just l, Just u) -> randomPrompt [l..u] >> prompt d
     _ -> outputError "Invalid argument format for entering random number generator." >> prompt d
   ["?"] -> printHelp >> prompt d
   _ -> outputError ("Unrecognized command: " ++ args ++ ".") >> prompt d
@@ -302,15 +302,17 @@ prompt d = handleInterrupt (prompt d) $ do
     Just "" -> prompt d
     Just input -> outputStrLn "|" >> handleCommand d input
 
-randomPrompt :: Int -> Int -> Action ()
-randomPrompt low up = do
+randomPrompt :: [Int] -> Action ()
+randomPrompt [] = pure ()
+randomPrompt sel = do
   minput <- getInputLine ("[" ++ color "35" "randomizer" ++ "] : ")
   case minput of
     Nothing -> pure ()
     Just _ -> do
       num <- liftIO (R.randomIO :: IO Int)
-      outputStrLn $ "| Random number is: " ++ color "34" (show $ low + mod num (up - low + 1))
-      randomPrompt low up
+      let num' = sel !! (mod num (length sel))
+      outputStrLn $ "| Random number is: " ++ color "34" (show num')
+      randomPrompt (filter (/= num') sel)
 
 main :: IO ()
 main = do
