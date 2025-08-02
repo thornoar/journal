@@ -200,7 +200,7 @@ getGrade (_,prbs,sols,bon,ex,fin) k =
       (_, _, pgrade) = getCumulativeProblemGrade prbs (fromMaybe empty $ M.lookup k sols) (fromMaybe 0 $ M.lookup k bon)
 
 getTotalGrade :: Float -> Float -> Int
-getTotalGrade eg pg = min 5 . max 2 . round $ 0.5 * eg + 0.6 * pg
+getTotalGrade eg pg = min 5 . max 2 . round $ 0.6 * eg + 0.6 * pg
 
 
 color :: String -> String -> String
