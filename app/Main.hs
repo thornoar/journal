@@ -13,7 +13,6 @@ import Data.Time
 
 import AcademicData
 import AI
-import System.Environment (lookupEnv)
 import Control.Monad (forM_, unless)
 import Data.List (sortBy, intercalate)
 
@@ -34,10 +33,7 @@ putError :: String -> IO ()
 putError msg = do
   putStrLn ""
   putStrLn $ color "1;31" "Error: " ++ msg
-  spec <- lookupEnv "SPECIALISATION"
-  if spec /= Just "hyprland-powersave"
-  then createError msg
-  else putStrLn ""
+  createError msg
 
 outputError :: String -> Action ()
 outputError = liftIO . putError
